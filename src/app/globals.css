@@ -33,6 +33,15 @@
     --loss: 350 80% 64%;
   }
 
+  .dark {
+    color-scheme: dark;
+  }
+  .dark input::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.9;
+    cursor: pointer;
+  }
+
   * {
     @apply border-border;
   }
