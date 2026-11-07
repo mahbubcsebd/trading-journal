@@ -28,6 +28,7 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind 3, Radix Dialog, Supabas
 
 - Cloud-only: all data in Supabase (no local mode; app shows setup screen without keys). Only theme + selected account are kept in localStorage.
 - Auth: single owner. Login asks password only (email = NEXT_PUBLIC_OWNER_EMAIL); password lives in Supabase Auth, never in code.
+- PDF report (analytics): vector multi-page A4 via jsPDF. `src/lib/pdf-report.ts` (content), `pdf-kit.ts` (drawing helpers), `report-stats.ts` (drawdown/streaks/RR). No PNG export, no screenshot.
 - PWA: src/app/manifest.ts, src/app/pwa-icon/route.tsx (PNG icons), public/sw.js, install-button.tsx
 
 @docs/DESIGN.md

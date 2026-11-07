@@ -24,3 +24,7 @@ Calm, simple journal UI. Tokens live in `tailwind.config.ts` + `src/app/globals.
 ## Accounts
 - Header: pill `<select>` (colour dot) + gear -> AccountsManager dialog. Each account has a hex colour (ACCOUNT_COLORS in src/lib/accounts.ts).
 - "All accounts" view shows account chip on trade cards and a "By account" card in analytics.
+
+## PDF report (src/lib/pdf-kit.ts)
+- A4, 40pt margins, dark navy banner + violet accent, light tint tiles, navy table headers, zebra rows, "Page x of y" footer.
+- Colours are RGB constants in `COLORS` (mirror app tokens: violet primary, green win, red loss).

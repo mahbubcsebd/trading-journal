@@ -33,6 +33,10 @@ interface ComboboxProps {
   emptyText?: string;
   /** Show the search box only when there are at least this many options */
   searchFrom?: number;
+  /** Let the user pick a value that is not in `options` */
+  allowCustom?: boolean;
+  /** Transform typed custom values, e.g. upper-case */
+  normalizeCustom?: (raw: string) => string;
   id?: string;
   "aria-label"?: string;
   className?: string;
@@ -56,16 +60,31 @@ export function Combobox({
   searchPlaceholder = "Search…",
   emptyText = "No results.",
   searchFrom = 6,
+  allowCustom = false,
+  normalizeCustom = (raw) => raw.trim(),
   id,
   className,
   contentClassName,
   ...rest
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
-  const selected = options.find((o) => o.value === value);
+  const [query, setQuery] = useState("");
+  const selected =
+    options.find((o) => o.value === value) ??
+    (allowCustom && value ? { value, label: value } : undefined);
+  const customValue = normalizeCustom(query);
+  const showCustom =
+    allowCustom &&
+    customValue !== "" &&
+    !options.some((o) => o.value.toLowerCase() === customValue.toLowerCase());
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) setQuery("");
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           id={id}
@@ -93,19 +112,35 @@ export function Combobox({
       </PopoverTrigger>
       <PopoverContent className={contentClassName}>
         <Command>
-          {options.length >= searchFrom && (
-            <CommandInput placeholder={searchPlaceholder} />
+          {(allowCustom || options.length >= searchFrom) && (
+            <CommandInput
+              placeholder={searchPlaceholder}
+              value={query}
+              onValueChange={setQuery}
+            />
           )}
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
+            {!showCustom && <CommandEmpty>{emptyText}</CommandEmpty>}
             <CommandGroup>
+              {showCustom && (
+                <CommandItem
+                  forceMount
+                  value={`__custom__${customValue}`}
+                  onSelect={() => {
+                    onChange(customValue);
+                    handleOpenChange(false);
+                  }}
+                >
+                  <span className="flex-1 truncate">Use “{customValue}”</span>
+                </CommandItem>
+              )}
               {options.map((o) => (
                 <CommandItem
                   key={o.value}
                   value={o.label}
                   onSelect={() => {
                     onChange(o.value);
-                    setOpen(false);
+                    handleOpenChange(false);
                   }}
                 >
                   <Dot color={o.color} />
