@@ -72,7 +72,7 @@ function LoginForm() {
             <LineChart className="h-7 w-7" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Trading Journal
+            Welcome to Lubna&apos;s Journal
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Private journal. Enter the password to continue.
