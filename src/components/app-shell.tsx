@@ -13,6 +13,8 @@ import {
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useTrades } from "@/components/trades-provider";
+import { InstallButton } from "@/components/install-button";
+import { lockLocal } from "@/components/local-gate";
 import { AccountSwitcher } from "@/components/account-switcher";
 import { AccountsManager } from "@/components/accounts-manager";
 import { ALL_ACCOUNTS, useAccounts } from "@/components/accounts-provider";
@@ -30,7 +32,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [manageOpen, setManageOpen] = useState(false);
   const { accounts, activeId } = useAccounts();
   const activeName =
-    activeId === ALL_ACCOUNTS ? "All accounts" : (accounts.find((a) => a.id === activeId)?.name ?? "All accounts");
+    activeId === ALL_ACCOUNTS
+      ? "All accounts"
+      : (accounts.find((a) => a.id === activeId)?.name ?? "All accounts");
 
   useEffect(
     () => setDark(document.documentElement.classList.contains("dark")),
@@ -47,7 +51,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   async function signOut() {
-    await getSupabase()?.auth.signOut();
+    const sb = getSupabase();
+    if (sb) await sb.auth.signOut();
+    else lockLocal();
   }
 
   return (
@@ -87,6 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-1">
+            <InstallButton />
             <AccountSwitcher onManage={() => setManageOpen(true)} />
             <button
               onClick={toggleTheme}
@@ -99,15 +106,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Moon className="h-[18px] w-[18px]" />
               )}
             </button>
-            {mode === "cloud" && (
-              <button
-                onClick={signOut}
-                aria-label="Sign out"
-                className="rounded-full p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <LogOut className="h-[18px] w-[18px]" />
-              </button>
-            )}
+            <button
+              onClick={signOut}
+              aria-label="Log out"
+              title="Log out"
+              className="rounded-full p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <LogOut className="h-[18px] w-[18px]" />
+            </button>
           </div>
         </div>
       </header>

@@ -6,6 +6,7 @@ import { LineChart } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { LocalGate } from "@/components/local-gate";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const sb = getSupabase();
@@ -18,33 +19,47 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, [sb]);
 
-  // No Supabase keys -> local mode (data stays on this device only)
-  if (!sb) return <>{children}</>;
-  if (session === undefined) return <div className="grid min-h-dvh place-items-center text-sm text-muted-foreground">Loading…</div>;
+  // No Supabase keys -> local mode (data stays on this device only), guarded by a simple password screen
+  if (!sb) return <LocalGate>{children}</LocalGate>;
+  if (session === undefined)
+    return (
+      <div className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
   if (!session) return <LoginForm />;
   return <>{children}</>;
 }
 
+/**
+ * Single-owner journal: the owner's email comes from NEXT_PUBLIC_OWNER_EMAIL and only the
+ * password is typed. Supabase keeps the session in this browser, so it is asked once per device.
+ * The password itself lives in Supabase Auth, never in this code.
+ */
+const OWNER_EMAIL = process.env.NEXT_PUBLIC_OWNER_EMAIL;
+
 function LoginForm() {
   const sb = getSupabase()!;
-  const [mode, setMode] = useState<"in" | "up">("in");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!OWNER_EMAIL) return;
     setBusy(true);
-    setMsg(null);
-    if (mode === "in") {
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) setMsg({ kind: "error", text: error.message });
-    } else {
-      const { data, error } = await sb.auth.signUp({ email, password });
-      if (error) setMsg({ kind: "error", text: error.message });
-      else if (!data.session)
-        setMsg({ kind: "info", text: "Account created. Check your email to confirm, then sign in." });
+    setError(null);
+    const { error: signInError } = await sb.auth.signInWithPassword({
+      email: OWNER_EMAIL,
+      password,
+    });
+    if (signInError) {
+      setError(
+        signInError.status === 400
+          ? "Wrong password. Please try again."
+          : signInError.message,
+      );
+      setPassword("");
     }
     setBusy(false);
   }
@@ -56,46 +71,51 @@ function LoginForm() {
           <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-soft">
             <LineChart className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Lubna&apos;s Trading Journal</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Trading Journal
+          </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            {mode === "in" ? "Sign in to see your trades on any device" : "Create your private journal"}
+            Private journal. Enter the password to continue.
           </p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4 rounded-3xl border bg-card p-6 shadow-soft">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              required
-              minLength={6}
-              autoComplete={mode === "in" ? "current-password" : "new-password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+        {OWNER_EMAIL ? (
+          <form
+            onSubmit={submit}
+            className="space-y-4 rounded-3xl border bg-card p-6 shadow-soft"
+          >
+            {/* Hidden username lets the browser/password manager remember the password */}
+            <input
+              type="email"
+              name="email"
+              autoComplete="username"
+              value={OWNER_EMAIL}
+              readOnly
+              hidden
             />
-          </div>
-          {msg && (
-            <p className={msg.kind === "error" ? "text-sm text-loss" : "text-sm text-win"}>{msg.text}</p>
-          )}
-          <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? "Please wait…" : mode === "in" ? "Sign in" : "Create account"}
-          </Button>
-        </form>
-
-        <button
-          onClick={() => {
-            setMode(mode === "in" ? "up" : "in");
-            setMsg(null);
-          }}
-          className="mt-5 block w-full text-center text-sm text-muted-foreground hover:text-foreground"
-        >
-          {mode === "in" ? "First time? Create an account" : "Already have an account? Sign in"}
-        </button>
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                autoFocus
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error && <p className="text-sm text-loss">{error}</p>}
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? "Please wait…" : "Unlock"}
+            </Button>
+          </form>
+        ) : (
+          <p className="rounded-3xl border bg-card p-6 text-sm text-loss shadow-soft">
+            Setup incomplete: set NEXT_PUBLIC_OWNER_EMAIL in the environment
+            (see README).
+          </p>
+        )}
       </div>
     </main>
   );

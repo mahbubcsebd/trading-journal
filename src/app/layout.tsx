@@ -3,11 +3,15 @@ import "./globals.css";
 import { AuthGate } from "@/components/auth-gate";
 import { AccountsProvider } from "@/components/accounts-provider";
 import { TradesProvider } from "@/components/trades-provider";
+import { PwaRegister } from "@/components/pwa-register";
 import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: "Trading Journal",
   description: "A calm, simple journal to track every trade, rule and result.",
+  applicationName: "Trading Journal",
+  icons: { icon: "/pwa-icon?size=192", apple: "/pwa-icon?size=180" },
+  appleWebApp: { capable: true, title: "Journal", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -25,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
+        <PwaRegister />
         <AuthGate>
           <TradesProvider>
             <AccountsProvider>
