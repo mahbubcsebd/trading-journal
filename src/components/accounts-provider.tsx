@@ -29,10 +29,11 @@ interface Ctx {
 }
 
 const AccountsContext = createContext<Ctx | null>(null);
-const LOCAL_KEY = "lubna-accounts-v1";
+// Only the *selected view* is remembered on this device. Accounts and trades live in Supabase.
 const ACTIVE_KEY = "active-account-v1";
 const UNIQUE_VIOLATION = "23505";
 const DUPLICATE_MESSAGE = "An account with this name already exists.";
+const NO_DATABASE = "Database is not connected. Check the Supabase settings.";
 
 function normalize(r: Record<string, unknown>): Account {
   return {
@@ -43,15 +44,11 @@ function normalize(r: Record<string, unknown>): Account {
   };
 }
 
-function seedLocal(): Account[] {
-  const now = Date.now();
-  return DEFAULT_ACCOUNTS.map((a, i) => ({
-    ...a,
-    id: crypto.randomUUID(),
-    created_at: new Date(now + i).toISOString(),
-  }));
+function messageFor(error: { code?: string; message: string }): string {
+  return error.code === UNIQUE_VIOLATION ? DUPLICATE_MESSAGE : error.message;
 }
 
+/** Accounts live in Supabase; nothing is stored on this device. */
 export function AccountsProvider({ children }: { children: React.ReactNode }) {
   const sb = getSupabase();
   const { purgeAccount } = useTrades();
@@ -61,37 +58,21 @@ export function AccountsProvider({ children }: { children: React.ReactNode }) {
   const seeding = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (sb) {
-      const read = () =>
-        sb
-          .from("accounts")
-          .select("*")
-          .order("created_at", { ascending: true });
-      let { data } = await read();
-      if (data && data.length === 0 && !seeding.current) {
-        seeding.current = true;
-        const { error } = await sb.from("accounts").insert(DEFAULT_ACCOUNTS);
-        if (error && error.code !== UNIQUE_VIOLATION)
-          console.error("Seeding accounts failed", error);
-        ({ data } = await read());
-      }
-      if (data) setAccounts(data.map(normalize));
-    } else {
-      try {
-        const raw = localStorage.getItem(LOCAL_KEY);
-        const saved = raw ? (JSON.parse(raw) as Account[]) : [];
-        if (saved.length > 0) {
-          setAccounts(saved);
-        } else {
-          const seeded = seedLocal();
-          localStorage.setItem(LOCAL_KEY, JSON.stringify(seeded));
-          setAccounts(seeded);
-        }
-      } catch (err) {
-        console.error("Could not read accounts", err);
-        setAccounts(seedLocal());
-      }
+    if (!sb) {
+      setLoading(false);
+      return;
     }
+    const read = () =>
+      sb.from("accounts").select("*").order("created_at", { ascending: true });
+    let { data } = await read();
+    if (data && data.length === 0 && !seeding.current) {
+      seeding.current = true;
+      const { error } = await sb.from("accounts").insert(DEFAULT_ACCOUNTS);
+      if (error && error.code !== UNIQUE_VIOLATION)
+        console.error("Seeding accounts failed", error);
+      ({ data } = await read());
+    }
+    if (data) setAccounts(data.map(normalize));
     setLoading(false);
   }, [sb]);
 
@@ -105,6 +86,9 @@ export function AccountsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
     if (!sb) return;
+    const onVisible = () => document.visibilityState === "visible" && refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", refresh);
     const channel = sb
       .channel("accounts-sync")
       .on(
@@ -114,6 +98,8 @@ export function AccountsProvider({ children }: { children: React.ReactNode }) {
       )
       .subscribe();
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", refresh);
       sb.removeChannel(channel);
     };
   }, [sb, refresh]);
@@ -136,76 +122,49 @@ export function AccountsProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  const commitLocal = (next: Account[]) => {
-    setAccounts(next);
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
-  };
-
   const addAccount = useCallback(
     async (input: AccountInput) => {
+      if (!sb) return NO_DATABASE;
       const invalid = validateAccount(input, accounts);
       if (invalid) return invalid;
-      const clean = { name: input.name.trim(), color: input.color };
-      if (sb) {
-        const { error } = await sb.from("accounts").insert(clean);
-        if (error)
-          return error.code === UNIQUE_VIOLATION
-            ? DUPLICATE_MESSAGE
-            : error.message;
-        await refresh();
-        return null;
-      }
-      commitLocal([
-        ...accounts,
-        {
-          ...clean,
-          id: crypto.randomUUID(),
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const { error } = await sb
+        .from("accounts")
+        .insert({ name: input.name.trim(), color: input.color });
+      if (error) return messageFor(error);
+      await refresh();
       return null;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sb, accounts, refresh],
   );
 
   const updateAccount = useCallback(
     async (id: string, input: AccountInput) => {
+      if (!sb) return NO_DATABASE;
       const invalid = validateAccount(input, accounts, id);
       if (invalid) return invalid;
-      const clean = { name: input.name.trim(), color: input.color };
-      if (sb) {
-        const { error } = await sb.from("accounts").update(clean).eq("id", id);
-        if (error)
-          return error.code === UNIQUE_VIOLATION
-            ? DUPLICATE_MESSAGE
-            : error.message;
-        await refresh();
-        return null;
-      }
-      commitLocal(accounts.map((a) => (a.id === id ? { ...a, ...clean } : a)));
+      const { error } = await sb
+        .from("accounts")
+        .update({ name: input.name.trim(), color: input.color })
+        .eq("id", id);
+      if (error) return messageFor(error);
+      await refresh();
       return null;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sb, accounts, refresh],
   );
 
   const deleteAccount = useCallback(
     async (id: string) => {
+      if (!sb) return NO_DATABASE;
       if (accounts.length <= 1) return "Keep at least one account.";
-      const purged = await purgeAccount(id);
-      if (!purged) return "Could not delete this account's trades.";
-      if (sb) {
-        const { error } = await sb.from("accounts").delete().eq("id", id);
-        if (error) return error.message;
-        await refresh();
-      } else {
-        commitLocal(accounts.filter((a) => a.id !== id));
-      }
+      if (!(await purgeAccount(id)))
+        return "Could not delete this account's trades.";
+      const { error } = await sb.from("accounts").delete().eq("id", id);
+      if (error) return error.message;
+      await refresh();
       if (activeId === id) setActiveId(ALL_ACCOUNTS);
       return null;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sb, accounts, activeId, purgeAccount, refresh, setActiveId],
   );
 

@@ -1,7 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getSupabase, isCloud } from "@/lib/supabase";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { getSupabase } from "@/lib/supabase";
 import { numOrNull } from "@/lib/utils";
 import type { Trade, TradeInput } from "@/lib/types";
 
@@ -9,7 +16,6 @@ interface Ctx {
   trades: Trade[];
   loading: boolean;
   error: string | null;
-  mode: "cloud" | "local";
   addTrade: (input: TradeInput) => Promise<boolean>;
   updateTrade: (id: string, input: TradeInput) => Promise<boolean>;
   deleteTrade: (id: string) => Promise<boolean>;
@@ -18,7 +24,7 @@ interface Ctx {
 }
 
 const TradesContext = createContext<Ctx | null>(null);
-const LOCAL_KEY = "lubna-trades-v1";
+const NO_DATABASE = "Database is not connected. Check the Supabase settings.";
 
 function normalize(r: Record<string, unknown>): Trade {
   return {
@@ -45,39 +51,37 @@ function sortTrades(list: Trade[]): Trade[] {
   return [...list].sort((a, b) =>
     a.trade_date === b.trade_date
       ? b.created_at.localeCompare(a.created_at)
-      : b.trade_date.localeCompare(a.trade_date)
+      : b.trade_date.localeCompare(a.trade_date),
   );
 }
 
+/** All trades live in Supabase; nothing is stored on this device. */
 export function TradesProvider({ children }: { children: React.ReactNode }) {
   const sb = getSupabase();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const loaded = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (sb) {
-      const { data, error } = await sb.from("trades").select("*").order("trade_date", { ascending: false });
-      if (error) {
-        setError(error.message);
-      } else {
-        setError(null);
-        setTrades(sortTrades((data ?? []).map(normalize)));
-      }
-    } else {
-      try {
-        const raw = localStorage.getItem(LOCAL_KEY);
-        setTrades(sortTrades(raw ? (JSON.parse(raw) as Trade[]) : []));
-      } catch {
-        setTrades([]);
-      }
+    if (!sb) {
+      setError(NO_DATABASE);
+      setLoading(false);
+      return;
     }
-    loaded.current = true;
+    const { data, error } = await sb
+      .from("trades")
+      .select("*")
+      .order("trade_date", { ascending: false });
+    if (error) {
+      setError(error.message);
+    } else {
+      setError(null);
+      setTrades(sortTrades((data ?? []).map(normalize)));
+    }
     setLoading(false);
   }, [sb]);
 
-  // Initial load + keep phone/browser in sync
+  // Initial load + keep every device in sync
   useEffect(() => {
     refresh();
     if (!sb) return;
@@ -86,7 +90,11 @@ export function TradesProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("focus", refresh);
     const channel = sb
       .channel("trades-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "trades" }, () => refresh())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "trades" },
+        () => refresh(),
+      )
       .subscribe();
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
@@ -95,82 +103,48 @@ export function TradesProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sb, refresh]);
 
-  const saveLocal = (list: Trade[]) => {
-    setTrades(sortTrades(list));
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(list));
-  };
-
-  const addTrade = useCallback(
-    async (input: TradeInput) => {
-      if (sb) {
-        const { error } = await sb.from("trades").insert(input);
-        if (error) {
-          setError(error.message);
-          return false;
-        }
-        await refresh();
-        return true;
+  /** Runs a write, reports any error, then reloads from the database. */
+  const write = useCallback(
+    async (
+      run: (
+        client: NonNullable<typeof sb>,
+      ) => PromiseLike<{ error: { message: string } | null }>,
+    ) => {
+      if (!sb) {
+        setError(NO_DATABASE);
+        return false;
       }
-      const t: Trade = { ...input, id: crypto.randomUUID(), created_at: new Date().toISOString() };
-      saveLocal([...trades, t]);
+      const { error } = await run(sb);
+      if (error) {
+        setError(error.message);
+        return false;
+      }
+      await refresh();
       return true;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sb, trades, refresh]
+    [sb, refresh],
+  );
+
+  const addTrade = useCallback(
+    (input: TradeInput) => write((c) => c.from("trades").insert(input)),
+    [write],
   );
 
   const updateTrade = useCallback(
-    async (id: string, input: TradeInput) => {
-      if (sb) {
-        const { error } = await sb.from("trades").update(input).eq("id", id);
-        if (error) {
-          setError(error.message);
-          return false;
-        }
-        await refresh();
-        return true;
-      }
-      saveLocal(trades.map((t) => (t.id === id ? { ...t, ...input } : t)));
-      return true;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sb, trades, refresh]
+    (id: string, input: TradeInput) =>
+      write((c) => c.from("trades").update(input).eq("id", id)),
+    [write],
   );
 
   const deleteTrade = useCallback(
-    async (id: string) => {
-      if (sb) {
-        const { error } = await sb.from("trades").delete().eq("id", id);
-        if (error) {
-          setError(error.message);
-          return false;
-        }
-        await refresh();
-        return true;
-      }
-      saveLocal(trades.filter((t) => t.id !== id));
-      return true;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sb, trades, refresh]
+    (id: string) => write((c) => c.from("trades").delete().eq("id", id)),
+    [write],
   );
 
   const purgeAccount = useCallback(
-    async (accountId: string) => {
-      if (sb) {
-        const { error } = await sb.from("trades").delete().eq("account_id", accountId);
-        if (error) {
-          setError(error.message);
-          return false;
-        }
-        await refresh();
-        return true;
-      }
-      saveLocal(trades.filter((t) => t.account_id !== accountId));
-      return true;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sb, trades, refresh]
+    (accountId: string) =>
+      write((c) => c.from("trades").delete().eq("account_id", accountId)),
+    [write],
   );
 
   const value = useMemo<Ctx>(
@@ -178,16 +152,17 @@ export function TradesProvider({ children }: { children: React.ReactNode }) {
       trades,
       loading,
       error,
-      mode: isCloud ? "cloud" : "local",
       addTrade,
       updateTrade,
       deleteTrade,
       purgeAccount,
     }),
-    [trades, loading, error, addTrade, updateTrade, deleteTrade, purgeAccount]
+    [trades, loading, error, addTrade, updateTrade, deleteTrade, purgeAccount],
   );
 
-  return <TradesContext.Provider value={value}>{children}</TradesContext.Provider>;
+  return (
+    <TradesContext.Provider value={value}>{children}</TradesContext.Provider>
+  );
 }
 
 export function useTrades() {

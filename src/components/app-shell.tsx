@@ -14,7 +14,6 @@ import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useTrades } from "@/components/trades-provider";
 import { InstallButton } from "@/components/install-button";
-import { lockLocal } from "@/components/local-gate";
 import { AccountSwitcher } from "@/components/account-switcher";
 import { AccountsManager } from "@/components/accounts-manager";
 import { ALL_ACCOUNTS, useAccounts } from "@/components/accounts-provider";
@@ -27,7 +26,7 @@ const NAV = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { mode, error } = useTrades();
+  const { error } = useTrades();
   const [dark, setDark] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const { accounts, activeId } = useAccounts();
@@ -51,9 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   async function signOut() {
-    const sb = getSupabase();
-    if (sb) await sb.auth.signOut();
-    else lockLocal();
+    await getSupabase()?.auth.signOut();
   }
 
   return (

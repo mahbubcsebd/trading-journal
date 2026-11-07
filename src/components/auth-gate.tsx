@@ -6,7 +6,6 @@ import { LineChart } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { LocalGate } from "@/components/local-gate";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const sb = getSupabase();
@@ -19,8 +18,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, [sb]);
 
-  // No Supabase keys -> local mode (data stays on this device only), guarded by a simple password screen
-  if (!sb) return <LocalGate>{children}</LocalGate>;
+  // All data lives in Supabase, so the app cannot run without it.
+  if (!sb) return <SetupRequired />;
   if (session === undefined)
     return (
       <div className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
@@ -116,6 +115,31 @@ function LoginForm() {
             (see README).
           </p>
         )}
+      </div>
+    </main>
+  );
+}
+
+function SetupRequired() {
+  return (
+    <main className="grid min-h-dvh place-items-center px-5">
+      <div className="w-full max-w-md rounded-3xl border bg-card p-6 shadow-soft">
+        <h1 className="text-lg font-semibold tracking-tight">
+          Connect your database
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Your journal is stored in Supabase so it stays in sync on every
+          device. Add these to{" "}
+          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+            .env.local
+          </code>{" "}
+          (and to your hosting settings), then restart:
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-2xl bg-muted p-3 text-xs leading-relaxed">
+          NEXT_PUBLIC_SUPABASE_URL=...{"\n"}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=...{"\n"}
+          NEXT_PUBLIC_OWNER_EMAIL=...
+        </pre>
       </div>
     </main>
   );

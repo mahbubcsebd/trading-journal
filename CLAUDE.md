@@ -26,7 +26,8 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind 3, Radix Dialog, Supabas
 - Multi-account: `accounts-provider` (CRUD, active account, `useScopedTrades`); every trade has `account_id`. Seeded: Lubna Rahman, Mahbubur Rahman.
 - Header switcher + manager dialog in app-shell; run supabase/schema.sql again to upgrade DB
 
-- Auth: single owner. Cloud mode asks password only (email = NEXT_PUBLIC_OWNER_EMAIL); password lives in Supabase Auth, never in code.
+- Cloud-only: all data in Supabase (no local mode; app shows setup screen without keys). Only theme + selected account are kept in localStorage.
+- Auth: single owner. Login asks password only (email = NEXT_PUBLIC_OWNER_EMAIL); password lives in Supabase Auth, never in code.
 - PWA: src/app/manifest.ts, src/app/pwa-icon/route.tsx (PNG icons), public/sw.js, install-button.tsx
 
 @docs/DESIGN.md
