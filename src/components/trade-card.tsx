@@ -5,7 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, Pencil, Trash2, X } f
 import { Button } from "@/components/ui/button";
 import { CHECKLIST } from "@/lib/checklist";
 import { disciplineOf } from "@/lib/stats";
-import { TRADE_TYPES, type Trade } from "@/lib/types";
+import { TRADE_TYPES, type Account, type Trade } from "@/lib/types";
 import { cn, formatPnl, pnlColor } from "@/lib/utils";
 
 const glow = {
@@ -27,11 +27,13 @@ const label = { win: "Success", loss: "Failed", breakeven: "Breakeven" };
 export function TradeCard({
   trade: t,
   index,
+  account,
   onEdit,
   onDelete,
 }: {
   trade: Trade;
   index?: number;
+  account?: Account;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -73,6 +75,12 @@ export function TradeCard({
                 {t.direction}
               </span>
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{typeLabel}</span>
+              {account && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-card/80 px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ring-border">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: account.color }} />
+                  {account.name}
+                </span>
+              )}
             </div>
             <p className={cn("mt-1.5 flex items-center gap-1.5 text-xs font-semibold", text[t.result])}>
               <span className={cn("h-1.5 w-1.5 rounded-full", dot[t.result])} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   addMonths,
@@ -13,21 +13,30 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileText, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useTrades } from "@/components/trades-provider";
+import { EquityChart } from "@/components/equity-chart";
+import { ALL_ACCOUNTS, useAccounts, useScopedTrades } from "@/components/accounts-provider";
 import { byType, disciplineSplit, groupByDate, inRange, ruleAdherence, summarize } from "@/lib/stats";
 import { CHECKLIST } from "@/lib/checklist";
 import { TRADE_TYPES } from "@/lib/types";
 import { cn, formatPnl, pnlColor } from "@/lib/utils";
+import { exportReport, type ReportFormat } from "@/lib/export-report";
 
 type Period = "week" | "month";
+type ChartView = "daily" | "curve";
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
 export default function AnalyticsPage() {
-  const { trades, loading } = useTrades();
+  const { trades, allTrades, loading } = useScopedTrades();
+  const { accounts, activeId } = useAccounts();
+  const activeAccount = accounts.find((a) => a.id === activeId);
   const [period, setPeriod] = useState<Period>("week");
   const [anchor, setAnchor] = useState<Date | null>(null);
+  const [chart, setChart] = useState<ChartView>("daily");
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState<ReportFormat | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => setAnchor(new Date()), []);
 
@@ -43,6 +52,11 @@ export default function AnalyticsPage() {
   const byDay = useMemo(() => groupByDate(scoped), [scoped]);
   const types = useMemo(() => byType(scoped), [scoped]);
   const rules = useMemo(() => ruleAdherence(scoped), [scoped]);
+  const perAccount = useMemo(
+    () => accounts.map((a) => ({ account: a, summary: summarize(scoped.filter((t) => t.account_id === a.id)) })),
+    [accounts, scoped]
+  );
+  const showAccountSplit = activeId === ALL_ACCOUNTS && accounts.length > 1;
   const split = useMemo(() => disciplineSplit(scoped), [scoped]);
 
   if (!anchor || !range) return null;
@@ -62,11 +76,27 @@ export default function AnalyticsPage() {
   }));
   const maxAbs = Math.max(1, ...dayNet.map((d) => Math.abs(d.net)));
 
+  async function saveReport(format: ReportFormat) {
+    if (!reportRef.current) return;
+    setExporting(format);
+    setExportError(null);
+    try {
+      await exportReport(reportRef.current, format, `analytics-${(activeAccount?.name ?? "all-accounts").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${period}-${iso(range!.from)}`);
+    } catch (err) {
+      console.error("Report export failed", err);
+      setExportError("Could not save the report. Please try again.");
+    } finally {
+      setExporting(null);
+    }
+  }
+
   function exportCsv() {
-    const head = ["date", "symbol", "type", "direction", "lot", "entry", "stop_loss", "take_profit", "exit", "result", "pnl", "rules_followed", "notes"];
-    const rows = [...trades].reverse().map((t) =>
+    const head = ["date", "account", "symbol", "type", "direction", "lot", "entry", "stop_loss", "take_profit", "exit", "result", "pnl", "rules_followed", "notes"];
+    const accountName = (id: string) => `"${(accounts.find((a) => a.id === id)?.name ?? "").replace(/"/g, '""')}"`;
+    const rows = [...allTrades].reverse().map((t) =>
       [
         t.trade_date,
+        accountName(t.account_id),
         t.symbol,
         t.trade_type,
         t.direction,
@@ -91,13 +121,16 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
+      <div ref={reportRef} className="space-y-6 bg-background">
       {/* Header controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Analytics</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Analytics · {activeAccount?.name ?? "All accounts"}
+          </p>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{label}</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div data-export-hide className="flex items-center gap-2">
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
             {(["week", "month"] as Period[]).map((p) => (
               <button
@@ -148,25 +181,41 @@ export default function AnalyticsPage() {
             </div>
           </section>
 
-          {/* Daily P/L */}
+          {/* Daily result / Profit curve (switchable) */}
           <section className="rounded-3xl border bg-card p-5 shadow-soft sm:p-6">
-            <h2 className="mb-5 text-sm font-semibold">Daily result</h2>
-            <div className="flex h-44 items-stretch gap-[3px] sm:gap-1.5">
-              {dayNet.map((d) => (
-                <div key={d.key} className="flex min-w-0 flex-1 flex-col" title={`${format(d.date, "d MMM")}: ${d.count ? formatPnl(d.net) : "no trades"}`}>
-                  <div className="flex flex-1 items-end">
-                    {d.net > 0 && <div className="w-full rounded-t-md bg-win" style={{ height: `${(d.net / maxAbs) * 100}%`, minHeight: 4 }} />}
-                  </div>
-                  <div className="h-px bg-border" />
-                  <div className="flex flex-1 items-start">
-                    {d.net < 0 && <div className="w-full rounded-b-md bg-loss" style={{ height: `${(Math.abs(d.net) / maxAbs) * 100}%`, minHeight: 4 }} />}
-                  </div>
-                  <p className="mt-2 truncate text-center text-[10px] text-muted-foreground">
-                    {period === "week" ? format(d.date, "EEE") : format(d.date, "d")}
-                  </p>
-                </div>
-              ))}
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold">{chart === "daily" ? "Daily result" : "Profit curve"}</h2>
+              <select
+                value={chart}
+                onChange={(e) => setChart(e.target.value as ChartView)}
+                aria-label="Chart type"
+                data-export-hide
+                className="h-9 rounded-xl border border-input bg-card px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="daily">Daily result (bars)</option>
+                <option value="curve">Profit curve (line)</option>
+              </select>
             </div>
+            {chart === "daily" ? (
+              <div className="flex h-44 items-stretch gap-[3px] sm:gap-1.5">
+                {dayNet.map((d) => (
+                  <div key={d.key} className="flex min-w-0 flex-1 flex-col" title={`${format(d.date, "d MMM")}: ${d.count ? formatPnl(d.net) : "no trades"}`}>
+                    <div className="flex flex-1 items-end">
+                      {d.net > 0 && <div className="w-full rounded-t-md bg-win" style={{ height: `${(d.net / maxAbs) * 100}%`, minHeight: 4 }} />}
+                    </div>
+                    <div className="h-px bg-border" />
+                    <div className="flex flex-1 items-start">
+                      {d.net < 0 && <div className="w-full rounded-b-md bg-loss" style={{ height: `${(Math.abs(d.net) / maxAbs) * 100}%`, minHeight: 4 }} />}
+                    </div>
+                    <p className="mt-2 truncate text-center text-[10px] text-muted-foreground">
+                      {period === "week" ? format(d.date, "EEE") : format(d.date, "d")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EquityChart points={dayNet} />
+            )}
           </section>
 
           {/* Calendar */}
@@ -201,6 +250,36 @@ export default function AnalyticsPage() {
               ))}
             </div>
           </section>
+
+          {/* Per-account comparison (only when viewing all accounts) */}
+          {showAccountSplit && (
+            <section className="rounded-3xl border bg-card p-5 shadow-soft sm:p-6">
+              <h2 className="mb-4 text-sm font-semibold">By account</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {perAccount.map(({ account, summary }) => (
+                  <div key={account.id} className="rounded-2xl border bg-muted/30 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: account.color }} />
+                        <span className="truncate">{account.name}</span>
+                      </p>
+                      <p className={cn("text-lg font-semibold tabular-nums", pnlColor(summary.net))}>
+                        {summary.total ? formatPnl(summary.net) : "—"}
+                      </p>
+                    </div>
+                    <div className="mt-3">
+                      <Meter pct={summary.winRate} color="bg-win" empty={summary.total === 0} />
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      {summary.total
+                        ? `${summary.total} trade${summary.total > 1 ? "s" : ""} · ${Math.round(summary.winRate)}% success`
+                        : "No trades"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* By type + rules */}
           <section className="grid gap-4 md:grid-cols-2">
@@ -252,12 +331,25 @@ export default function AnalyticsPage() {
             </section>
           )}
 
-          <div className="flex justify-center pt-2">
+        </>
+      )}
+      </div>
+
+      {!loading && (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => saveReport("pdf")} disabled={exporting !== null}>
+              <FileText className="h-4 w-4" /> {exporting === "pdf" ? "Saving…" : "Save as PDF"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => saveReport("png")} disabled={exporting !== null}>
+              <ImageIcon className="h-4 w-4" /> {exporting === "png" ? "Saving…" : "Save as image (PNG)"}
+            </Button>
             <Button variant="outline" size="sm" onClick={exportCsv}>
-              <Download className="h-4 w-4" /> Download backup (CSV)
+              <Download className="h-4 w-4" /> Backup (CSV)
             </Button>
           </div>
-        </>
+          {exportError && <p className="text-xs text-loss">{exportError}</p>}
+        </div>
       )}
     </div>
   );

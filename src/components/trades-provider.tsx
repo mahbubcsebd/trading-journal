@@ -13,6 +13,8 @@ interface Ctx {
   addTrade: (input: TradeInput) => Promise<boolean>;
   updateTrade: (id: string, input: TradeInput) => Promise<boolean>;
   deleteTrade: (id: string) => Promise<boolean>;
+  /** Remove every trade that belongs to an account (used when the account is deleted). */
+  purgeAccount: (accountId: string) => Promise<boolean>;
 }
 
 const TradesContext = createContext<Ctx | null>(null);
@@ -21,6 +23,7 @@ const LOCAL_KEY = "lubna-trades-v1";
 function normalize(r: Record<string, unknown>): Trade {
   return {
     id: String(r.id),
+    account_id: String(r.account_id ?? ""),
     trade_date: String(r.trade_date),
     symbol: String(r.symbol ?? ""),
     trade_type: r.trade_type as Trade["trade_type"],
@@ -152,6 +155,24 @@ export function TradesProvider({ children }: { children: React.ReactNode }) {
     [sb, trades, refresh]
   );
 
+  const purgeAccount = useCallback(
+    async (accountId: string) => {
+      if (sb) {
+        const { error } = await sb.from("trades").delete().eq("account_id", accountId);
+        if (error) {
+          setError(error.message);
+          return false;
+        }
+        await refresh();
+        return true;
+      }
+      saveLocal(trades.filter((t) => t.account_id !== accountId));
+      return true;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sb, trades, refresh]
+  );
+
   const value = useMemo<Ctx>(
     () => ({
       trades,
@@ -161,8 +182,9 @@ export function TradesProvider({ children }: { children: React.ReactNode }) {
       addTrade,
       updateTrade,
       deleteTrade,
+      purgeAccount,
     }),
-    [trades, loading, error, addTrade, updateTrade, deleteTrade]
+    [trades, loading, error, addTrade, updateTrade, deleteTrade, purgeAccount]
   );
 
   return <TradesContext.Provider value={value}>{children}</TradesContext.Provider>;

@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthGate } from "@/components/auth-gate";
+import { AccountsProvider } from "@/components/accounts-provider";
 import { TradesProvider } from "@/components/trades-provider";
 import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
-  title: "Lubna Rahman | Trading Journal",
+  title: "Trading Journal",
   description: "A calm, simple journal to track every trade, rule and result.",
 };
 
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthGate>
           <TradesProvider>
-            <AppShell>{children}</AppShell>
+            <AccountsProvider>
+              <AppShell>{children}</AppShell>
+            </AccountsProvider>
           </TradesProvider>
         </AuthGate>
       </body>

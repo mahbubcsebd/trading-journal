@@ -2,8 +2,18 @@ export type TradeType = "scalping" | "intraday" | "swing";
 export type Direction = "buy" | "sell";
 export type Result = "win" | "loss" | "breakeven";
 
+export interface Account {
+  id: string;
+  name: string;
+  color: string; // hex, e.g. #7c3aed
+  created_at: string;
+}
+
+export type AccountInput = Pick<Account, "name" | "color">;
+
 export interface Trade {
   id: string;
+  account_id: string;
   trade_date: string; // yyyy-MM-dd
   symbol: string;
   trade_type: TradeType;

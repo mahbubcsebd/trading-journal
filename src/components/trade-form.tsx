@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { ALL_ACCOUNTS, useAccounts } from "@/components/accounts-provider";
 import { CHECKLIST, emptyChecklist } from "@/lib/checklist";
 import { TRADE_TYPES, type Direction, type Result, type Trade, type TradeInput, type TradeType } from "@/lib/types";
 import { cn, numOrNull } from "@/lib/utils";
@@ -46,6 +48,9 @@ function Segmented<T extends string>({
 }
 
 export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: Props) {
+  const { accounts, activeId } = useAccounts();
+  const defaultAccountId = activeId === ALL_ACCOUNTS ? (accounts[0]?.id ?? "") : activeId;
+  const [accountId, setAccountId] = useState(defaultAccountId);
   const [date, setDate] = useState(defaultDate);
   const [symbol, setSymbol] = useState("");
   const [type, setType] = useState<TradeType>("intraday");
@@ -65,6 +70,7 @@ export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: 
   useEffect(() => {
     if (!open) return;
     if (initial) {
+      setAccountId(initial.account_id);
       setDate(initial.trade_date);
       setSymbol(initial.symbol);
       setType(initial.trade_type);
@@ -79,6 +85,7 @@ export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: 
       setChecks({ ...emptyChecklist(), ...initial.checklist });
       setNotes(initial.notes ?? "");
     } else {
+      setAccountId(defaultAccountId);
       setDate(defaultDate);
       setSymbol("");
       setType("intraday");
@@ -93,6 +100,7 @@ export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: 
       setChecks(emptyChecklist());
       setNotes("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial, defaultDate]);
 
   const done = CHECKLIST.filter((c) => checks[c.id]).length;
@@ -103,6 +111,7 @@ export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: 
     setBusy(true);
     const abs = Math.abs(Number(amount) || 0);
     const input: TradeInput = {
+      account_id: accountId,
       trade_date: date,
       symbol: symbol.trim().toUpperCase(),
       trade_type: type,
@@ -136,6 +145,19 @@ export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: 
           </div>
 
           <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            {/* 0. Account */}
+            <section>
+              <Label htmlFor="account">Account</Label>
+              <Combobox
+                id="account"
+                options={accounts.map((a) => ({ value: a.id, label: a.name, color: a.color }))}
+                value={accountId}
+                onChange={setAccountId}
+                placeholder="Select account"
+                aria-label="Account"
+              />
+            </section>
+
             {/* 1. Checklist */}
             <section>
               <div className="mb-3 flex items-center justify-between">
@@ -290,7 +312,7 @@ export function TradeForm({ open, onOpenChange, initial, defaultDate, onSave }: 
             <Button type="button" variant="secondary" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-[2]" disabled={busy}>
+            <Button type="submit" className="flex-[2]" disabled={busy || !accountId}>
               {busy ? "Saving…" : initial ? "Save changes" : "Save trade"}
             </Button>
           </div>

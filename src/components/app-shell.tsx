@@ -13,6 +13,9 @@ import {
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useTrades } from "@/components/trades-provider";
+import { AccountSwitcher } from "@/components/account-switcher";
+import { AccountsManager } from "@/components/accounts-manager";
+import { ALL_ACCOUNTS, useAccounts } from "@/components/accounts-provider";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -24,6 +27,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { mode, error } = useTrades();
   const [dark, setDark] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const { accounts, activeId } = useAccounts();
+  const activeName =
+    activeId === ALL_ACCOUNTS ? "All accounts" : (accounts.find((a) => a.id === activeId)?.name ?? "All accounts");
 
   useEffect(
     () => setDark(document.documentElement.classList.contains("dark")),
@@ -51,12 +58,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-soft">
               <LineChart className="h-5 w-5" />
             </span>
-            <span className="flex flex-col leading-tight">
+            <span className="hidden flex-col leading-tight sm:flex">
               <span className="text-[15px] font-semibold tracking-tight">
-                Lubna Rahman
+                Trading Journal
               </span>
               <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                Trading Journal
+                {activeName}
               </span>
             </span>
           </Link>
@@ -80,6 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-1">
+            <AccountSwitcher onManage={() => setManageOpen(true)} />
             <button
               onClick={toggleTheme}
               aria-label="Toggle theme"
@@ -129,6 +137,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </div>
       </nav>
+      <AccountsManager open={manageOpen} onOpenChange={setManageOpen} />
     </div>
   );
 }

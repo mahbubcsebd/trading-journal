@@ -7,17 +7,33 @@ import { Button } from "@/components/ui/button";
 import { TradeCard } from "@/components/trade-card";
 import { TradeForm } from "@/components/trade-form";
 import { useTrades } from "@/components/trades-provider";
+import { ALL_ACCOUNTS, useAccounts, useScopedTrades } from "@/components/accounts-provider";
 import { summarize } from "@/lib/stats";
-import type { Trade } from "@/lib/types";
+import { Combobox } from "@/components/ui/combobox";
+import { TRADE_TYPES, type Result, type Trade, type TradeType } from "@/lib/types";
 import { cn, formatPnl, pnlColor } from "@/lib/utils";
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
+type TypeFilter = "all" | TradeType;
+type ResultFilter = "all" | Result;
+
+const RESULT_OPTIONS: { value: ResultFilter; label: string; color?: string }[] = [
+  { value: "all", label: "All results" },
+  { value: "win", label: "Profit", color: "hsl(var(--win))" },
+  { value: "loss", label: "Loss", color: "hsl(var(--loss))" },
+  { value: "breakeven", label: "Breakeven", color: "hsl(var(--muted-foreground))" },
+];
+
 export default function JournalPage() {
-  const { trades, loading, addTrade, updateTrade, deleteTrade } = useTrades();
+  const { addTrade, updateTrade, deleteTrade } = useTrades();
+  const { trades, loading } = useScopedTrades();
+  const { accounts, activeId } = useAccounts();
   const [date, setDate] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Trade | null>(null);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [resultFilter, setResultFilter] = useState<ResultFilter>("all");
 
   // Set the date on the client (avoids server/browser timezone mismatch). Supports /?d=2026-11-05
   useEffect(() => {
@@ -25,7 +41,20 @@ export default function JournalPage() {
     setDate(d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : iso(new Date()));
   }, []);
 
-  const dayTrades = useMemo(() => trades.filter((t) => t.trade_date === date), [trades, date]);
+  const allDayTrades = useMemo(() => trades.filter((t) => t.trade_date === date), [trades, date]);
+  const dayTrades = useMemo(
+    () =>
+      allDayTrades.filter(
+        (t) =>
+          (typeFilter === "all" || t.trade_type === typeFilter) &&
+          (resultFilter === "all" || t.result === resultFilter)
+      ),
+    [allDayTrades, typeFilter, resultFilter]
+  );
+  const typeCounts = useMemo(
+    () => Object.fromEntries(TRADE_TYPES.map((x) => [x.value, allDayTrades.filter((t) => t.trade_type === x.value).length])),
+    [allDayTrades]
+  );
   const s = useMemo(() => summarize(dayTrades), [dayTrades]);
 
   if (!date) return null;
@@ -79,6 +108,39 @@ export default function JournalPage() {
         </div>
       </div>
 
+      {/* Trade type filter */}
+      {allDayTrades.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by trade type">
+          {([{ value: "all", label: "All", count: allDayTrades.length }, ...TRADE_TYPES.map((x) => ({ value: x.value, label: x.label, count: typeCounts[x.value] }))] as { value: TypeFilter; label: string; count: number }[]).map((o) => (
+            <button
+              key={o.value}
+              role="tab"
+              aria-selected={typeFilter === o.value}
+              onClick={() => setTypeFilter(o.value)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
+                typeFilter === o.value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              {o.label}
+              <span className={cn("text-xs tabular-nums", typeFilter === o.value ? "opacity-80" : "opacity-60")}>{o.count}</span>
+            </button>
+          ))}
+        </div>
+        <Combobox
+          options={RESULT_OPTIONS}
+          value={resultFilter}
+          onChange={(v) => setResultFilter(v as ResultFilter)}
+          aria-label="Filter by result"
+          className="h-9 w-40 rounded-full bg-card px-3.5 sm:ml-auto"
+          contentClassName="min-w-[11rem]"
+        />
+        </div>
+      )}
+
       {/* Day summary */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Trades" value={String(s.total)} />
@@ -90,6 +152,16 @@ export default function JournalPage() {
       {/* Trades */}
       {loading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">Loading your trades…</p>
+      ) : allDayTrades.length > 0 && dayTrades.length === 0 ? (
+        <div className="rounded-3xl border border-dashed bg-card/50 px-6 py-12 text-center">
+          <p className="font-medium">No trades match these filters</p>
+          <Button variant="secondary" size="sm" className="mt-4" onClick={() => {
+              setTypeFilter("all");
+              setResultFilter("all");
+            }}>
+            Clear filters
+          </Button>
+        </div>
       ) : dayTrades.length === 0 ? (
         <div className="rounded-3xl border border-dashed bg-card/50 px-6 py-16 text-center">
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-muted text-muted-foreground">
@@ -109,6 +181,11 @@ export default function JournalPage() {
             <TradeCard
               key={t.id}
               index={i + 1}
+              account={
+                activeId === ALL_ACCOUNTS && accounts.length > 1
+                  ? accounts.find((a) => a.id === t.account_id)
+                  : undefined
+              }
               trade={t}
               onEdit={() => {
                 setEditing(t);

@@ -23,7 +23,8 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind 3, Radix Dialog, Supabas
 ## Conventions
 
 - `@/` alias for src; client components use trades-provider (`useTrades`)
-- Brand name "Lubna Rahman" in app-shell header + layout metadata
+- Multi-account: `accounts-provider` (CRUD, active account, `useScopedTrades`); every trade has `account_id`. Seeded: Lubna Rahman, Mahbubur Rahman.
+- Header switcher + manager dialog in app-shell; run supabase/schema.sql again to upgrade DB
 
 @docs/DESIGN.md
 
