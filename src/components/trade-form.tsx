@@ -33,13 +33,16 @@ interface Props {
 
 const SYMBOL_OPTIONS = [
   "XAUUSD",
+  "BTCUSD",
+  "XAGUSD",
   "EURUSD",
   "GBPUSD",
   "USDJPY",
-  "GBPJPY",
-  "BTCUSD",
   "US30",
-  "NAS100",
+  "USOIL",
+  "ETHUSD",
+  "GBPJPY",
+  "EURJPY",
 ].map((s) => ({ value: s, label: s }));
 
 function Segmented<T extends string>({
