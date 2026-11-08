@@ -33,14 +33,14 @@ interface Props {
 
 const SYMBOL_OPTIONS = [
   "XAUUSD",
-  "BTCUSD",
   "XAGUSD",
+  "BTCUSD",
+  "ETHUSD",
+  "US30",
+  "USOIL",
   "EURUSD",
   "GBPUSD",
   "USDJPY",
-  "US30",
-  "USOIL",
-  "ETHUSD",
   "GBPJPY",
   "EURJPY",
 ].map((s) => ({ value: s, label: s }));
